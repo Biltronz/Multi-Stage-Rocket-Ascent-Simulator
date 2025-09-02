@@ -1,0 +1,300 @@
+import numpy as np
+import matplotlib.pyplot as pp
+import pandas as pd
+g0 = 9.81 #at sea level
+dt = 0.5
+rho = 1.225 # air density
+rho0 = 1.225
+Cd = 0.2 #drag coefficient
+CSA = 0.2 # cross-sectional area
+H=8500
+G = 6.6743 * (10**(-11))
+R = 6.371 * (10**(6))
+M = 5.972 * (10**24)
+
+#stage 1
+thrust_s1 = 30000
+fuel_mass_s1 = 300
+dry_mass_s1 = 100
+burn_rate_s1 = 2
+burn_time_s1 = 150
+#stage 2
+burn_rate_s2 = 1
+dry_mass_s2 = 50
+fuel_mass_s2 = 100
+thrust_s2 = 15000
+burn_time_s2 = 100
+coast_time = 60
+
+
+init_mass_s1 = fuel_mass_s1+dry_mass_s1
+init_mass_s2 = fuel_mass_s2+dry_mass_s2
+liftoff_mass = init_mass_s1+init_mass_s2
+min_mass_s1 = dry_mass_s1 + init_mass_s2
+total_time=burn_time_s1+burn_time_s2+coast_time
+
+#time
+time_s1 = np.arange(0,burn_time_s1,dt)
+time_s2 = np.arange(burn_time_s1,burn_time_s2+burn_time_s1,dt)
+time_coast = np.arange(burn_time_s1+burn_time_s2, burn_time_s1+burn_time_s2+coast_time,dt)
+time = np.concatenate((time_s1,time_s2,time_coast))
+
+#data arrays- stage 1
+velocity_s1 = np.zeros_like(time_s1)
+acceleration_s1 = np.zeros_like(time_s1)
+masses_s1 = np.zeros_like(time_s1)
+altitudes_s1 = np.zeros_like(time_s1)
+drag_force_s1 = np.zeros_like(time_s1)
+#data arrays- stage 2
+velocity_s2 = np.zeros_like(time_s2)
+acceleration_s2 = np.zeros_like(time_s2)
+masses_s2 = np.zeros_like(time_s2)
+altitudes_s2 = np.zeros_like(time_s2)
+drag_force_s2 = np.zeros_like(time_s2)
+#data arrays- coast phase
+velocity_coast = np.zeros_like(time_coast)
+altitudes_coast = np.zeros_like(time_coast)
+acceleration_coast = np.zeros_like(time_coast)
+masses_coast = np.zeros_like(time_coast)
+drag_force_coast = np.zeros_like(time_coast)
+
+#initial values
+masses_s1[0]=liftoff_mass
+altitudes_s1[0]=0
+velocity_s1[0]=0
+acceleration_s1[0]=0
+#stage 1
+for i in range(1,len(time_s1)):
+    masses_s1[i] = max(masses_s1[i-1] - (burn_rate_s1 * dt), min_mass_s1)
+    g = (G*M)/((R+altitudes_s1[i-1])**2)
+    weight = masses_s1[i]*g
+    if altitudes_s1[i-1] < 100000:
+        rho = rho0*np.exp(-altitudes_s1[i-1]/H)
+    else:
+        rho = 0
+    drag = 0.5*CSA*(velocity_s1[i-1]**2)*rho*Cd
+    drag_force_s1[i] = drag*np.sign(velocity_s1[i-1])
+    net_force = thrust_s1-weight-drag_force_s1[i]
+    acceleration_s1[i]=net_force/masses_s1[i]
+    velocity_s1[i] = velocity_s1[i-1] + acceleration_s1[i] * dt
+    altitudes_s1[i] = altitudes_s1[i-1] + (velocity_s1[i-1]*dt) + (0.5*acceleration_s1[i]*(dt**2))
+
+#initial values - Stage 2
+masses_s2[0]=init_mass_s2
+altitudes_s2[0]=altitudes_s1[-1]
+velocity_s2[0]=velocity_s1[-1]
+acceleration_s2[0]=acceleration_s1[-1]
+#stage 2
+for i in range(1,len(time_s2)):
+    masses_s2[i]=max(masses_s2[i-1]-burn_rate_s2*dt,50)
+    if altitudes_s2[i-1] < 100000:
+        rho = rho0*np.exp(-altitudes_s2[i-1]/H)
+    else:
+        rho = 0
+    drag = 0.5*CSA*(velocity_s2[i-1]**2)*rho*Cd
+    drag_force_s2[i] = drag * np.sign(velocity_s2[i-1])
+    g = (G*M)/((R+altitudes_s2[i-1])**2)
+    weight = masses_s2[i]*g
+    net_force = thrust_s2 - weight - drag_force_s2[i]
+    acceleration_s2[i] = net_force/masses_s2[i]
+    velocity_s2[i] = velocity_s2[i-1] + acceleration_s2[i] * dt
+    altitudes_s2[i] = altitudes_s2[i-1] + velocity_s2[i-1] * dt + (0.5*acceleration_s2[i]*(dt**2))
+
+#initial values - coast phase
+masses_coast[0] = masses_s2[-1]
+acceleration_coast[0]=acceleration_s2[-1]
+velocity_coast[0]=velocity_s2[-1]
+altitudes_coast[0] = altitudes_s2[-1]
+masses_coast[:] = masses_s2[-1]
+#coast phase
+for i in range(1,len(time_coast)):
+    g = (G*M)/((R+altitudes_coast[i-1])**2)
+    weight = masses_coast[i]*g
+    if altitudes_coast[i-1] < 100000:
+        rho = rho0*np.exp(-altitudes_coast[i-1]/H)
+    else:
+        rho = 0
+    drag = 0.5*CSA*(velocity_coast[i-1]**2)*rho*Cd
+    drag_force_coast[i] = drag * np.sign(velocity_coast[i-1])
+    net_force = -weight-drag_force_coast[i]
+    acceleration_coast[i] = net_force/masses_coast[i]
+    velocity_coast[i] = velocity_coast[i-1] + acceleration_coast[i] * dt
+    altitudes_coast[i] = altitudes_coast[i-1] + velocity_coast[i-1]*dt + (0.5 * acceleration_coast[i] * (dt**2))
+
+# combined data arrays
+time = np.concatenate((time_s1,time_s2,time_coast))
+velocity = np.concatenate((velocity_s1,velocity_s2,velocity_coast))
+altitudes = np.concatenate((altitudes_s1,altitudes_s2,altitudes_coast))
+masses = np.concatenate((masses_s1,masses_s2,masses_coast))
+acceleration = np.concatenate((acceleration_s1,acceleration_s2,acceleration_coast))
+drag_forces = np.concatenate((drag_force_s1,drag_force_s2,drag_force_coast))
+
+#data export
+data = {'Time (s)': time, "Altitude (m)": altitudes, 'Velocity (m/s)': velocity,
+        "Acceleration (m/s^2)" : acceleration,
+        'Mass(Kg)': masses, "drag force (N)": drag_forces
+}
+df = pd.DataFrame(data)
+df.to_csv('rocket_simulation_data.csv', index=False)
+# graphing
+pp.plot(time_s1,altitudes_s1,label='Altitude')
+pp.plot(time_s1,velocity_s1,label='Velocity')
+pp.plot(time_s1,acceleration_s1,label='Acceleration')
+pp.plot(time_s1,drag_force_s1,label='Drag')
+pp.plot(time_s1,masses_s1,label='Mass (Kg)', linestyle = '--')
+pp.xlabel("time")
+pp.title("Stage 1")
+pp.legend()
+pp.show()
+
+fig, ax1 = pp.subplots()
+ax1.plot(time_s1, velocity_s1, color = 'b', label='Velocity')
+ax1.set_xlabel('Time (s)')
+ax1.set_ylabel('Velocity (m/s)')
+ax1.tick_params(axis = 'y', labelcolor = 'b')
+ax2 = ax1.twinx()
+ax2.plot(time_s1,acceleration_s1, color = 'r', label = 'Acceleration')
+ax2.set_ylabel("Acceleration")
+ax2.tick_params(axis = 'y', labelcolor = 'r')
+pp.title("Stage 1 acceleration and velocity with dual Y-axes")
+pp.show()
+
+# graphing- stage 2
+pp.plot(time_s2,altitudes_s2,label='Altitude')
+pp.plot(time_s2,velocity_s2,label='Velocity')
+pp.plot(time_s2,acceleration_s2,label='Acceleration')
+pp.plot(time_s2,drag_force_s2,label='Drag')
+pp.plot(time_s2,masses_s2,label='Mass (Kg)', linestyle = '--')
+pp.xlabel("time")
+pp.title("Stage 2")
+pp.legend()
+pp.show()
+
+fig, ax1 = pp.subplots()
+ax1.plot(time_s2, velocity_s2, color = 'b', label='Velocity')
+ax1.set_xlabel("Time (s)")
+ax1.set_ylabel('Velocity (m/s)')
+ax1.tick_params(axis = 'y', color = 'b')
+ax2 = ax1.twinx()
+ax2.plot(time_s2, acceleration_s2, color = 'r', label='Acceleration')
+ax2.tick_params(axis = 'y', color = 'r')
+ax2.set_ylabel("Acceleration")
+pp.title('Stage 2 Acceleration and Velocity with dual Y-axes')
+pp.show()
+
+# graphing- coast phase
+pp.plot(time_coast,altitudes_coast,label='Altitude')
+pp.plot(time_coast,velocity_coast,label='Velocity')
+pp.plot(time_coast,acceleration_coast,label='Acceleration')
+pp.plot(time_coast,drag_force_coast,label='Drag')
+pp.plot(time_coast,masses_coast,label='Mass (Kg)', linestyle = '--')
+pp.xlabel("time")
+pp.title("Coast Phase")
+pp.legend()
+pp.show()
+
+fig, ax1 = pp.subplots()
+ax1.plot(time_coast, velocity_coast, color = 'b', label='Velocity')
+ax1.set_xlabel("Time (s)")
+ax1.set_ylabel('Velocity (m/s)')
+ax1.tick_params(axis = 'y', color = 'b')
+ax2 = ax1.twinx()
+ax2.plot(time_coast, acceleration_coast, color = 'r', label='Acceleration')
+ax2.tick_params(axis = 'y', color = 'r')
+ax2.set_ylabel("Acceleration")
+pp.title('Coast Phase Acceleration and Velocity with dual Y-axes')
+pp.show()
+
+#graphing- Overall
+pp.plot(time,altitudes,label='Altitude')
+pp.plot(time,velocity,label='Velocity')
+pp.plot(time,acceleration,label='Acceleration')
+pp.plot(time,drag_forces,label='Drag')
+pp.plot(time,masses,label='Mass (Kg)', linestyle = '--')
+pp.axvline(time_s1[-1], color = 'red', linestyle = ':', label = "Stage 2")
+pp.axvline(time_s2[-1], color = 'red', linestyle = ':', label = "Coast Phase")
+pp.axhline(max(altitudes), color = 'gray', linestyle = ":", label = 'max altitude')
+pp.axhline(max(velocity), color = 'gray', linestyle = ":", label = 'max velocity')
+pp.xlabel("time")
+pp.title("Overall Data")
+pp.legend()
+pp.show()
+
+fig, ax1 = pp.subplots()
+ax1.plot(time, velocity, color = 'b', label='Velocity')
+ax1.set_xlabel("Time (s)")
+ax1.set_ylabel('Velocity (m/s)')
+ax1.tick_params(axis = 'y', color = 'b')
+ax2 = ax1.twinx()
+ax2.plot(time, acceleration, color = 'r', label='Acceleration')
+ax2.tick_params(axis = 'y', color = 'r')
+ax2.set_ylabel("Acceleration")
+pp.title('Overall Acceleration and Velocity with dual Y-axes')
+pp.show()
+
+#consolidated figure
+fig, axs = pp.subplots(3,2, figsize = (12,15))
+axs[0,0].plot(time_s1, altitudes_s1, label = 'altitude')
+axs[0,0].set_title("Stage 1 data")
+axs[0,0].set_xlabel("Time")
+axs[0,0].plot(time_s1,velocity_s1,label='Velocity')
+axs[0,0].plot(time_s1,acceleration_s1,label='Acceleration')
+axs[0,0].plot(time_s1,drag_force_s1,label='Drag')
+axs[0,0].plot(time_s1,masses_s1,label='Mass (Kg)', linestyle = '--')
+axs[0,0].legend()
+
+ax1 = axs[0,1]
+ax1.plot(time_s1, velocity_s1, label = 'Velocity', color = 'b')
+ax1.tick_params(axis = "y", labelcolor = 'b')
+ax2 = ax1.twinx()
+ax2.plot(time_s1, acceleration_s1, label = 'Acceleration', color = 'r')
+ax2.tick_params(axis = "y", labelcolor = 'r')
+ax1.set_title("Stage 1 acceleration and velocity with dual Y-axes")
+ax1.set_xlabel("Time")
+ax1.set_ylabel("Velocity")
+ax2.set_ylabel("Acceleration")
+ax1.grid(True)
+
+axs[1,0].plot(time_s2, altitudes_s2, label = 'altitude')
+axs[1,0].set_title("Stage 2 data")
+axs[1,0].set_xlabel("Time")
+axs[1,0].plot(time_s2,velocity_s2,label='Velocity')
+axs[1,0].plot(time_s2,acceleration_s2,label='Acceleration')
+axs[1,0].plot(time_s2,drag_force_s2,label='Drag')
+axs[1,0].plot(time_s2,masses_s2,label='Mass (Kg)', linestyle = '--')
+axs[1,0].legend()
+
+ax1 = axs[1,1]
+ax1.plot(time_s2, velocity_s2, label = 'Velocity', color = 'b')
+ax1.tick_params(axis = "y", labelcolor = 'b')
+ax2 = ax1.twinx()
+ax2.plot(time_s2, acceleration_s2, label = 'Acceleration', color = 'r')
+ax2.tick_params(axis = "y", labelcolor = 'r')
+ax1.set_title("Stage 2 acceleration and velocity with dual Y-axes")
+ax1.set_xlabel("Time")
+ax1.set_ylabel("Velocity")
+ax2.set_ylabel("Acceleration")
+ax1.grid(True)
+
+axs[2,0].plot(time_coast, altitudes_coast, label = 'altitude')
+axs[2,0].set_title("Coast phase data")
+axs[2,0].set_xlabel("Time")
+axs[2,0].plot(time_coast,velocity_coast,label='Velocity')
+axs[2,0].plot(time_coast,acceleration_coast,label='Acceleration')
+axs[2,0].plot(time_coast,drag_force_coast,label='Drag')
+axs[2,0].plot(time_coast,masses_coast,label='Mass (Kg)', linestyle = '--')
+axs[2,0].legend()
+
+ax1 = axs[2,1]
+ax1.plot(time_coast, velocity_coast, label = 'Velocity', color = 'b')
+ax1.tick_params(axis = "y", labelcolor = 'b')
+ax2 = ax1.twinx()
+ax2.plot(time_coast, acceleration_coast, label = 'Acceleration', color = 'r')
+ax2.tick_params(axis = "y", labelcolor = 'r')
+ax1.set_title("coast phase acceleration and velocity with dual Y-axes")
+ax1.set_xlabel("Time")
+ax1.set_ylabel("Velocity")
+ax2.set_ylabel("Acceleration")
+ax1.grid(True)
+pp.tight_layout()
+pp.show()
